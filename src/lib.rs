@@ -1,6 +1,3 @@
-#![feature(allocator, no_std, libc)]
-#![allocator]
-#![crate_type = "rlib"]
 #![no_std]
 
 //! boehm_gc is an allocator crate that provides an interface to the Boehm conservative garbage
@@ -17,7 +14,7 @@ mod sys;
 
 use core::mem;
 use core::ptr;
-use libc::{size_t, c_void};
+use libc::{c_void, size_t};
 
 /// This implementation of __rust_allocate invokes GC_malloc_uncollectable,
 /// which allocates memory that is not collectable by the garbage collector
@@ -44,7 +41,12 @@ pub extern "C" fn __rust_reallocate(ptr: *mut u8, _: usize, size: usize, _: usiz
 }
 
 #[no_mangle]
-pub extern "C" fn __rust_reallocate_inplace(ptr: *mut u8, _: usize, size: usize, _: usize) -> *mut u8 {
+pub extern "C" fn __rust_reallocate_inplace(
+    ptr: *mut u8,
+    _: usize,
+    size: usize,
+    _: usize,
+) -> *mut u8 {
     unsafe { sys::GC_realloc(ptr as *mut c_void, size as size_t) as *mut u8 }
 }
 
@@ -65,7 +67,9 @@ pub fn gc_allocate(size: usize) -> *mut u8 {
 /// stop-the-world collection.
 #[inline]
 pub fn gc_collect() {
-    unsafe { sys::GC_gcollect(); }
+    unsafe {
+        sys::GC_gcollect();
+    }
 }
 
 /// Used as an argument to register_finalizer to influence the circumstances upon which the garbage
@@ -81,7 +85,7 @@ pub enum FinalizerMode {
     /// Performs the default behavior of the Boehm GC, but ignores all cycles when calculating
     /// which finalizers to run. This is a strict superset of the capabilities that IgnoreSelf
     /// provides.
-    NoOrder
+    NoOrder,
 }
 
 /// Attaches a finalizer function and metadata object to a garbage-collected pointer. The finalizer
@@ -109,32 +113,40 @@ pub enum FinalizerMode {
 /// The Boehm GC provides mechanisms for breaking cycles in the finalizer chain but this
 /// crate does not yet expose them.
 #[inline]
-pub fn register_finalizer(ptr: *mut u8,
-                          finalizer: extern "C" fn(*mut u8, *mut u8),
-                          data: *mut u8,
-                          mode: FinalizerMode) {
+pub fn register_finalizer(
+    ptr: *mut u8,
+    finalizer: extern "C" fn(*mut u8, *mut u8),
+    data: *mut u8,
+    mode: FinalizerMode,
+) {
     match mode {
         FinalizerMode::Standard => unsafe {
-            sys::GC_register_finalizer(ptr as *mut c_void,
+            sys::GC_register_finalizer(
+                ptr as *mut c_void,
                 mem::transmute(finalizer),
                 data as *mut c_void,
                 ptr::null_mut() as *mut _,
-                ptr::null_mut() as *mut *mut _);
+                ptr::null_mut() as *mut *mut _,
+            );
         },
         FinalizerMode::IgnoreSelf => unsafe {
-            sys::GC_register_finalizer_ignore_self(ptr as *mut c_void,
+            sys::GC_register_finalizer_ignore_self(
+                ptr as *mut c_void,
                 mem::transmute(finalizer),
                 data as *mut c_void,
                 ptr::null_mut() as *mut _,
-                ptr::null_mut() as *mut *mut _);
+                ptr::null_mut() as *mut *mut _,
+            );
         },
         FinalizerMode::NoOrder => unsafe {
-            sys::GC_register_finalizer_no_order(ptr as *mut c_void,
+            sys::GC_register_finalizer_no_order(
+                ptr as *mut c_void,
                 mem::transmute(finalizer),
                 data as *mut c_void,
                 ptr::null_mut() as *mut _,
-                ptr::null_mut() as *mut *mut _);
-        }
+                ptr::null_mut() as *mut *mut _,
+            );
+        },
     }
 }
 
@@ -183,5 +195,7 @@ pub fn gc_disable() {
 /// It is imperative that the supplied oom_fn not allocate.
 #[inline]
 pub fn set_oom_fn(oom_fn: extern "C" fn(size_t) -> *mut u8) {
-    unsafe { sys::GC_oom_fn = mem::transmute(oom_fn); }
+    unsafe {
+        sys::GC_oom_fn = mem::transmute(oom_fn);
+    }
 }
