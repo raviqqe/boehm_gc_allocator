@@ -1,5 +1,3 @@
-#![no_std]
-
 //! boehm_gc is an allocator crate that provides an interface to the Boehm conservative garbage
 //! collector. The allocator that this crate provides ensures that all objects that it allocates
 //! will root any GC'd pointers that the objects may contain. GC'd pointers are allocated using
@@ -12,61 +10,39 @@ extern crate libc;
 
 mod sys;
 
-use core::mem;
-use core::ptr;
 use libc::{c_void, size_t};
+use std::alloc::{GlobalAlloc, Layout};
+use std::mem;
+use std::ptr;
 
-/// This implementation of __rust_allocate invokes GC_malloc_uncollectable,
-/// which allocates memory that is not collectable by the garbage collector
-/// but is capable of rooting GC'd pointers. Any pointer that resides
-/// in memory allocated by Rust's allocator will be traced for pointers,
-/// and any pointers that are contained within this memory are considered
-/// to be rooted.
-#[no_mangle]
-pub extern "C" fn __rust_allocate(size: usize, _: usize) -> *mut u8 {
-    unsafe { sys::GC_malloc_uncollectable(size as size_t) as *mut u8 }
-}
+pub struct BoehmAllocator;
 
-/// Deallocates memory allocated by GC_malloc_uncollectable. This memory isn't normally
-/// collectable so we rely on Rust's drop glue to free the memory that it's allocated. Luckily,
-/// it's really good at that sort of thing!
-#[no_mangle]
-pub extern "C" fn __rust_deallocate(ptr: *mut u8, _: usize, _: usize) {
-    unsafe { sys::GC_free(ptr as *mut c_void) }
-}
+unsafe impl GlobalAlloc for BoehmAllocator {
+    unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
+        sys::GC_malloc(layout.size()) as *mut u8
+    }
 
-#[no_mangle]
-pub extern "C" fn __rust_reallocate(ptr: *mut u8, _: usize, size: usize, _: usize) -> *mut u8 {
-    unsafe { sys::GC_realloc(ptr as *mut c_void, size as size_t) as *mut u8 }
-}
+    unsafe fn dealloc(&self, ptr: *mut u8, _layout: Layout) {
+        sys::GC_free(ptr as *mut c_void)
+    }
 
-#[no_mangle]
-pub extern "C" fn __rust_reallocate_inplace(
-    ptr: *mut u8,
-    _: usize,
-    size: usize,
-    _: usize,
-) -> *mut u8 {
-    unsafe { sys::GC_realloc(ptr as *mut c_void, size as size_t) as *mut u8 }
-}
-
-#[no_mangle]
-pub extern "C" fn __rust_usable_size(size: usize, _: usize) -> usize {
-    size
+    unsafe fn realloc(&self, ptr: *mut u8, _layout: Layout, new_size: usize) -> *mut u8 {
+        sys::GC_realloc(ptr as *mut c_void, new_size as size_t) as *mut u8
+    }
 }
 
 /// Allocates `size` bytes on the managed heap and returns a pointer to the newly-allocated
 /// memory. This memory is tracked by the garbage collector and will be freed automatically
 /// when it is no longer reachable.
 #[inline]
-pub fn gc_allocate(size: usize) -> *mut u8 {
+pub fn alloc(size: usize) -> *mut u8 {
     unsafe { sys::GC_malloc(size as size_t) as *mut u8 }
 }
 
 /// Forces the garbage collector to run, deallocating any unreachable memory. This is a full,
 /// stop-the-world collection.
 #[inline]
-pub fn gc_collect() {
+pub fn collect() {
     unsafe {
         sys::GC_gcollect();
     }
@@ -178,13 +154,13 @@ pub fn total_bytes() -> usize {
 /// Enables the garbage collector, if the number of times that gc_enable() has been
 /// called is the same as the number of times that gc_disable() has been called.
 #[inline]
-pub fn gc_enable() {
+pub fn enable_gc() {
     unsafe { sys::GC_enable() }
 }
 
 /// Disables the garbage collector and prevents gc_collect() from doing anything.
 #[inline]
-pub fn gc_disable() {
+pub fn disable_gc() {
     unsafe { sys::GC_disable() }
 }
 

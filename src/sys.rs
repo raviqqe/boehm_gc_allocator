@@ -5,7 +5,6 @@ extern "C" {
     pub static mut GC_oom_fn: extern "C" fn(size_t) -> !;
 
     pub fn GC_malloc(nbytes: size_t) -> *mut c_void;
-    pub fn GC_malloc_uncollectable(nbytes: size_t) -> *mut c_void;
     pub fn GC_realloc(old: *mut c_void, new_size: size_t) -> *mut c_void;
     pub fn GC_free(dead: *mut c_void);
     pub fn GC_gcollect();
